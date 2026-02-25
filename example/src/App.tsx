@@ -1,12 +1,52 @@
-import { Text, View, StyleSheet } from 'react-native';
-import { multiply } from 'react-native-image-processing';
+import { Button, View, StyleSheet } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 
-const result = multiply(3, 7);
+import { getTensorObj } from 'react-native-image-processing';
 
 export default function App() {
+  async function handleOnPickPress() {
+    const result = await launchImageLibrary({
+      mediaType: 'photo',
+      selectionLimit: 1,
+    });
+
+    const { uri: sourcePath } = result.assets?.[0] || {};
+
+    if (sourcePath) {
+      preprocessImage(sourcePath);
+    }
+  }
+
+  const preprocessImage = (source: string) => {
+    let start = new Date().getTime();
+
+    const tensorObj = getTensorObj(source, {
+      inputDimensions: {
+        width: 224,
+        height: 224,
+      },
+    });
+
+    const floatArray = new Float32Array(
+      tensorObj.tensor,
+      0,
+      tensorObj.shape[1]
+    );
+
+    const tensor = Array.from(floatArray);
+
+    let end = new Date().getTime();
+
+    let time = end - start;
+
+    console.log('time', time);
+
+    console.log(tensor.slice(0, 10), tensor?.length);
+  };
+
   return (
     <View style={styles.container}>
-      <Text>Result: {result}</Text>
+      <Button title="Pick Image" onPress={handleOnPickPress} />
     </View>
   );
 }
