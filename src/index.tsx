@@ -24,7 +24,7 @@ export function getTensorObj(filePath: string, options: Options): Tensor {
       meta,
     } = module.getTensorObj(filePath, options);
 
-    const tensor = convertBufferToTensor(buffer, shape[0]);
+    const tensor = convertBufferToTensor(buffer, shape[1]);
 
     return { tensor, shape, meta };
   }
@@ -32,7 +32,7 @@ export function getTensorObj(filePath: string, options: Options): Tensor {
   const { shape, meta } = ImageProcessing.processImage(filePath, options);
   const buffer = module.getTensorObj();
 
-  const tensor = convertBufferToTensor(buffer, shape[0]);
+  const tensor = convertBufferToTensor(buffer, shape[1]);
 
   return { tensor, shape, meta };
 }
