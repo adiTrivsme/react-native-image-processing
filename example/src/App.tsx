@@ -27,16 +27,9 @@ export default function App() {
       },
     });
 
-    const floatArray = new Float32Array(
-      tensorObj.tensor,
-      0,
-      tensorObj.shape[1]
-    );
-
-    const tensor = Array.from(floatArray);
+    const { tensor } = tensorObj;
 
     let end = new Date().getTime();
-
     let time = end - start;
 
     console.log('time', time);

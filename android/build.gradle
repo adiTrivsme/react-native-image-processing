@@ -37,13 +37,26 @@ android {
 
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
+
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
     targetSdkVersion getExtOrDefault("targetSdkVersion")
+
+    externalNativeBuild {
+      cmake {
+        arguments "-DANDROID_STL=c++_shared"
+      }
+    }
   }
 
   buildFeatures {
     buildConfig true
+    prefab true
   }
 
   buildTypes {

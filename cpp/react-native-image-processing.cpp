@@ -1,7 +1,6 @@
 #include "react-native-image-processing.h"
 #include <jsi/jsi.h>
-
-#import "Bridge.h"
+#include "Bridge.h"
 
 using namespace facebook;
 
@@ -19,7 +18,7 @@ namespace imageProcessingModule {
                             return jsi::String::createFromUtf8(runtime, "Hello from JSI !!");
                           };
     
-    jsi::Function sayHello = jsi::Function::createFromHostFunction(jsiRuntime,jsi::PropNameID::forAscii(jsiRuntime, "sayHello"), 0,sayHelloLmd);
+    jsi::Function sayHello = jsi::Function::createFromHostFunction(jsiRuntime,jsi::PropNameID::forAscii(jsiRuntime, "sayHello"), 0, sayHelloLmd);
     
     imageProcessingObj.setProperty(jsiRuntime, "sayHello", sayHello); // set function to a property in our module object
      
