@@ -1,12 +1,17 @@
+interface MetaObj {
+  layout: 'NHWC' | 'NCHW';
+  dType: 'float32' | 'uint8' | 'int8';
+}
+
 interface Meta {
   shape: Array<number>;
-  meta: Object;
+  meta: MetaObj;
 }
 
 interface Tensor {
   tensor: FloatArray;
   shape: Array<number>;
-  meta: Object;
+  meta: MetaObj;
 }
 
 interface TensorObj extends Meta {
@@ -26,18 +31,17 @@ interface Options {
   };
 
   // varies frequently as per model
-  colorFormat?: 'RGB' | 'RGBA' | 'BGR' | 'Grayscale';
+  colorFormat?: 'RGB' | 'BGR' | 'Grayscale';
   normalization?: 'zeroToOne' | 'none' | 'minusOneToOne' | 'meanStd';
   mean?: RGB;
   std?: RGB;
   outDType?: 'float32' | 'uint8' | 'int8';
 
   // rarely varies, but good to have it customizable
-  channelOrder?: 'interleaved' | 'planar';
-  resizeStrategy?: 'centerCrop' | 'stretch' | 'aspectFit' | 'aspectFill'; // non
+  resizeStrategy?: 'stretch' | 'aspectFit' | 'aspectFill';
   tensorLayout?: 'NHWC' | 'NCHW';
   orientationHandling?: 'respectExif' | 'ignoreExif';
-  alphaHandling?: 'dropAlpha' | 'premultiply' | 'keep';
+  alphaHandling?: 'dropAlpha' | 'premultiply';
 }
 
 type GetTensorObjMethod = {

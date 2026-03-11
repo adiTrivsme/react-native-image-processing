@@ -34,7 +34,7 @@ export default function App() {
 
     console.log('time', time);
 
-    console.log(tensor.slice(0, 10), tensor?.length);
+    console.log(tensor, tensor?.length);
   };
 
   return (

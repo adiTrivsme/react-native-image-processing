@@ -1,8 +1,12 @@
 import { TurboModuleRegistry, type TurboModule } from 'react-native';
+interface MetaObj {
+  layout: 'NHWC' | 'NCHW';
+  dType: 'float32' | 'uint8' | 'int8';
+}
 
 interface Meta {
   shape: Array<number>;
-  meta: Object;
+  meta: MetaObj;
 }
 
 interface RGB {
@@ -18,18 +22,17 @@ interface Options {
   };
 
   // varies frequently as per model
-  colorFormat?: 'RGB' | 'RGBA' | 'BGR' | 'Grayscale';
+  colorFormat?: 'RGB' | 'BGR' | 'Grayscale';
   normalization?: 'zeroToOne' | 'none' | 'minusOneToOne' | 'meanStd';
   mean?: RGB;
   std?: RGB;
-  outDType?: 'float32' | 'uint8' | 'int8'; // non
+  outDType?: 'float32' | 'uint8' | 'int8';
 
   // rarely varies, but good to have it customizable
-  channelOrder?: 'interleaved' | 'planar'; // non
-  resizeStrategy?: 'centerCrop' | 'stretch' | 'aspectFit' | 'aspectFill'; // non
-  tensorLayout?: 'NHWC' | 'NCHW'; // non
+  resizeStrategy?: 'stretch' | 'aspectFit' | 'aspectFill';
+  tensorLayout?: 'NHWC' | 'NCHW';
   orientationHandling?: 'respectExif' | 'ignoreExif';
-  alphaHandling?: 'dropAlpha' | 'premultiply' | 'keep';
+  alphaHandling?: 'dropAlpha' | 'premultiply';
 }
 
 export interface Spec extends TurboModule {

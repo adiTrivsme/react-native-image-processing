@@ -1,14 +1,31 @@
 export function convertBufferToTensor(
   buffer: ArrayBuffer,
-  length: number | undefined
+  shape: number[],
+  outDType: 'float32' | 'uint8' | 'int8'
 ) {
   if (!buffer) {
     throw new Error('Tensor buffer not available');
   }
 
-  const floatArray = new Float32Array(buffer, 0, length);
+  const elementCount = shape.reduce((a, b) => a * b, 1);
 
-  const tensor = Array.from(floatArray);
+  let typedArray;
+
+  switch (outDType) {
+    case 'uint8':
+      typedArray = new Uint8Array(buffer, 0, elementCount);
+      break;
+    case 'int8':
+      typedArray = new Int8Array(buffer, 0, elementCount);
+      break;
+    default:
+      typedArray = new Float32Array(buffer, 0, elementCount);
+      break;
+  }
+
+  // const typedArray = new Float32Array(buffer, 0, elementCount);
+
+  const tensor = Array.from(typedArray);
 
   return tensor;
 }

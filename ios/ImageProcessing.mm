@@ -1,7 +1,8 @@
 #import "ImageProcessing.h"
 #import "Bridge.h"
 #import "react-native-image-processing.h"
-#include "FloatBuffer.h"
+#import "FloatBuffer.h"
+#import "RawBuffer.h"
 
 #import <jsi/jsi.h>
 #import <React/RCTBridge+Private.h>
@@ -9,8 +10,9 @@
 #import <UIKit/UIKit.h>
 #import <React/RCTUtils.h>
 
-using namespace facebook;
+#import "Utils.h"
 
+using namespace facebook;
 
 @interface ImageProcessing ()
 @property (copy, nonatomic) NSString *defaultColorFormat;
@@ -43,8 +45,7 @@ using namespace facebook;
     _defaultColorFormat = @"RGB";
     _defaultNormalization = @"zeroToOne";
     _defaultOutDType = @"float32";
-    _defaultChannelOrder = @"interleaved";
-    _defaultResizeStrategy = @"centerCrop";
+    _defaultResizeStrategy = @"aspectFill";
     _defaultTensorLayout = @"NHWC";
     _defaultOrientationHandling = @"respectExif";
     _defaultAlphaHandling = @"dropAlpha";
@@ -96,8 +97,7 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
     );
   }
 
-  id meanValue = [NSNull null];
-  id stdValue  = [NSNull null];
+  NSArray *meanValue = nil;  NSArray *stdValue  = nil;
 
   if ([normalization isEqualToString:@"meanStd"]) {
     if (options.hasProperty(rt, "mean")) {
@@ -121,20 +121,22 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
     }
     return fallback;
   };
+  
+  NSString *colorFormat = getStringProp("colorFormat", self.defaultColorFormat);
 
   NSDictionary *config = @{
     @"inputWidth": width ?: [NSNull null],
     @"inputHeight": height ?: [NSNull null],
-    @"colorFormat": getStringProp("colorFormat", self.defaultColorFormat),
+    @"colorFormat": colorFormat,
     @"normalization": normalization,
-    @"mean": meanValue,
-    @"std": stdValue,
-    @"channelOrder": getStringProp("channelOrder", self.defaultChannelOrder),
+    @"mean": meanValue ?: [NSNull null],
+    @"std": stdValue ?: [NSNull null],
     @"outDType": getStringProp("outDType", self.defaultOutDType),
     @"resizeStrategy": getStringProp("resizeStrategy", self.defaultResizeStrategy),
     @"tensorLayout": getStringProp("tensorLayout", self.defaultTensorLayout),
     @"orientationHandling": getStringProp("orientationHandling", self.defaultOrientationHandling),
     @"alphaHandling": getStringProp("alphaHandling", self.defaultAlphaHandling),
+    @"channelCount": [colorFormat isEqualToString:@"Grayscale"] ? @1 : @3,
   };
 
   return config;
@@ -146,42 +148,12 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
 
     NSString *colorFormat = config[@"colorFormat"];
     NSString *alphaHandling = config[@"alphaHandling"];
-
-    CGColorSpaceRef colorSpace = NULL;
-    CGBitmapInfo bitmapInfo = 0; // use to specify type of alpha
-    size_t bytesPerPixel = 0;
-
-    if ([colorFormat isEqualToString:@"Grayscale"]) {
-        colorSpace = CGColorSpaceCreateDeviceGray();
-        bytesPerPixel = 1;
-        bitmapInfo = kCGImageAlphaNone;
-
-    } else {
-        // RGB / RGBA / BGR all use RGB color space
-        colorSpace = CGColorSpaceCreateDeviceRGB();
-
-        BOOL wantsAlpha =
-            [colorFormat isEqualToString:@"RGBA"] ||
-            [alphaHandling isEqualToString:@"keep"] ||
-            [alphaHandling isEqualToString:@"premultiply"];
-
-        if (wantsAlpha) {
-            bytesPerPixel = 4;
-
-            if ([alphaHandling isEqualToString:@"premultiply"]) {
-                bitmapInfo = kCGImageAlphaPremultipliedLast;
-            } else {
-                bitmapInfo = kCGImageAlphaLast;
-            }
-        } else {
-            // dropAlpha
-            bytesPerPixel = 4; // alpha skipped
-            bitmapInfo = kCGImageAlphaNoneSkipLast;
-        }
-    }
+  
+    BitmapContextConfig ctxConfig =
+        GetBitmapContextConfig(colorFormat, alphaHandling);
 
     size_t bitsPerComponent = 8;
-    size_t bytesPerRow = width * bytesPerPixel;
+    size_t bytesPerRow = width * ctxConfig.bytesPerPixel;;
 
     CGContextRef context = CGBitmapContextCreate(
         NULL, // let system allocate the buffer size
@@ -189,11 +161,11 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
         height,
         bitsPerComponent,
         bytesPerRow,
-        colorSpace,
-        bitmapInfo
+        ctxConfig.colorSpace,
+        ctxConfig.bitmapInfo
     );
 
-    CGColorSpaceRelease(colorSpace);
+    CGColorSpaceRelease(ctxConfig.colorSpace);
 
     return context;
 }
@@ -223,68 +195,21 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
     // orientation transforms should not leak outside this draw
     CGContextSaveGState(context);
 
-    // Read orientation handling policy
-    // EXIF orientation affects how pixels should be laid out
     NSString *orientationHandling = config[@"orientationHandling"];
-
-    if ([orientationHandling isEqualToString:@"respectExif"]) {
-
-        // Compute orientation transform
-        // UIImage stores orientation metadata, not rotated pixels so we need to manually rotate
-        CGAffineTransform transform = CGAffineTransformIdentity;
-
-        switch (image.imageOrientation) {
-            case UIImageOrientationRight:
-                transform = CGAffineTransformTranslate(transform, targetSize.width, 0);
-                transform = CGAffineTransformRotate(transform, M_PI_2);
-                break;
-
-            case UIImageOrientationLeft:
-                transform = CGAffineTransformTranslate(transform, 0, targetSize.height);
-                transform = CGAffineTransformRotate(transform, -M_PI_2);
-                break;
-
-            case UIImageOrientationDown:
-                transform = CGAffineTransformTranslate(transform,
-                                                       targetSize.width,
-                                                       targetSize.height);
-                transform = CGAffineTransformRotate(transform, M_PI);
-                break;
-
-            default:
-                break;
-        }
-
-        // Apply orientation transform
-        // Ensures pixel buffer matches visual orientation
-        CGContextConcatCTM(context, transform);
-    }
-
-    // Read source image size to compute scaling and cropping
+    ApplyExifOrientation(orientationHandling, context, image.imageOrientation, targetSize);
+  
     size_t srcWidth  = CGImageGetWidth(cgImage);
     size_t srcHeight = CGImageGetHeight(cgImage);
-
-    // !! supporting centerCrop only for now !!
-    // Compute scale for centerCrop resize strategy centerCrop fills entire target without distortion
-    CGFloat scale = MAX(
-        (CGFloat)targetSize.width  / srcWidth,
-        (CGFloat)targetSize.height / srcHeight
-    );
-
-    // Compute scaled draw size for drawimg image
-    CGFloat drawWidth  = srcWidth  * scale;
-    CGFloat drawHeight = srcHeight * scale;
-
-    // Compute draw rectangle where the image gets drawn by bitmap context
-    CGRect drawRect = CGRectMake(
-        (targetSize.width  - drawWidth)  / 2.0,
-        (targetSize.height - drawHeight) / 2.0,
-        drawWidth,
-        drawHeight
-    );
-
-    //  Draw image into bitmap context
-    // This performs decode (pixels), resize, crop, color conversion
+  
+    NSString *resizeStrategy = config[@"resizeStrategy"];
+    CGRect drawRect = ComputeDrawRect(
+                                      srcWidth,
+                                      srcHeight,
+                                      targetWidth,
+                                      targetHeight,
+                                      resizeStrategy
+                                  );
+  
     CGContextDrawImage(context, drawRect, cgImage);
 
     // Restore graphics state, cleans up orientation transforms
@@ -293,8 +218,8 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
    RCTLogInfo(@"[NativeImagePreprocessing] ✅ Image drawn into bitmap context");
 }
 
-- (void)fillTensorFromBitmapContext:(CGContextRef)context
-                       outputBuffer:(float *)output
+- (void *)fillTensorFromBitmapContext:(CGContextRef)context
+                             config: config
 {
     // Get bitmap properties
     size_t width  = CGBitmapContextGetWidth(context);
@@ -304,41 +229,73 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
     size_t bytesPerPixel = bitsPerPixel / 8; // usually 4 (RGBA)
 
     uint8_t *pixelData = (uint8_t *)CGBitmapContextGetData(context);
+  
+    NSString *channelCountObject = config[@"channelCount"];
+    int channelCount = [channelCountObject intValue];
+  
+    size_t elementCount = width * height * channelCount;
+    float *output = (float *)malloc(elementCount * sizeof(float));
+  
     if (!pixelData) {
         NSLog(@"No pixel data");
-        return;
+        return output;
+    }
+  
+    NSString *colorFormat = config[@"colorFormat"];
+    NSString *normalization = config[@"normalization"];
+    NSString *outDType = config[@"outDType"];
+    NSString *alphaHandling = config[@"alphaHandling"];
+    NSArray *mean = config[@"mean"];
+    NSArray *std = config[@"std"];
+    NSString *layout = config[@"tensorLayout"];
+    
+    if ([outDType isEqualToString:@"uint8"] &&
+      ![normalization isEqualToString:@"none"]) {
+
+      NSLog(@"Invalid config: uint8 tensors cannot use normalization. Forcing 'none'.");
+      normalization = @"none";
     }
 
-    // NHWC: [height][width][channels]
-    size_t channelCount = self.channelCount; // RGB
+    void *buffer = NULL;
 
+    if ([outDType isEqualToString:@"float32"]) {
+      buffer = malloc(elementCount * sizeof(float));
+    }
+    else if ([outDType isEqualToString:@"uint8"]) {
+      buffer = malloc(elementCount * sizeof(uint8_t));
+    }
+  
     for (size_t y = 0; y < height; y++) {
         uint8_t *row = pixelData + y * bytesPerRow;
 
         for (size_t x = 0; x < width; x++) {
-            uint8_t *pixel = row + x * bytesPerPixel;
+          uint8_t *pixel = row + x * bytesPerPixel;
 
-            // RGBA source
-            uint8_t r = pixel[0];
-            uint8_t g = pixel[1];
-            uint8_t b = pixel[2];
-            // uint8_t a = pixel[3]; // dropped
-
-            // Normalize: zeroToOne
-            float rf = r / 255.0f;
-            float gf = g / 255.0f;
-            float bf = b / 255.0f;
-
-            // NHWC index
-            size_t baseIndex =
-                (y * width * channelCount) +
-                (x * channelCount);
-
-            output[baseIndex + 0] = rf;
-            output[baseIndex + 1] = gf;
-            output[baseIndex + 2] = bf;
+          // normalized RGB values
+          RGBValues rgb = NormalizePixel(
+              pixel,
+              normalization,
+              alphaHandling,
+              mean,
+              std
+          );
+          
+          auto pixelIndices = GetOutIndicesAsPerTensorLayout(
+              x,
+              y,
+              width,
+              height,
+              channelCount,
+              layout
+          );
+          
+          auto rgbValues = rgbOrderAsPerColorFormat(colorFormat, rgb);
+          
+          UpdateOutputBufferWithRGB(outDType, buffer, pixelIndices.data(), rgbValues.data(), channelCount);
         }
     }
+  
+  return buffer;
 }
 
 - (jsi::Value)processImage:(jsi::Runtime &)rt
@@ -385,16 +342,18 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
   
   size_t width  = CGBitmapContextGetWidth(context);
   size_t height = CGBitmapContextGetHeight(context);
-  
-  size_t elementCount = width * height * self.channelCount;
-  float *outputBuffer = (float *)malloc(elementCount * sizeof(float));
 
-  [self fillTensorFromBitmapContext:context outputBuffer:outputBuffer];
-
+  void *outputBuffer = [self fillTensorFromBitmapContext:context config: config];
   
-  size_t byteLength = elementCount * sizeof(float);;
+  NSString *outDType = config[@"outDType"];
+  NSString *channelCountObject = config[@"channelCount"];
+  size_t channelCount = [channelCountObject intValue];
   
-  auto dataBuffer = std::make_shared<FloatBuffer>(outputBuffer, byteLength);
+  size_t elementCount = width * height * channelCount;
+  size_t elementSize = GetElementSize(outDType);
+  size_t byteLength = elementCount * elementSize;
+  
+  auto dataBuffer = std::make_shared<RawBuffer>(outputBuffer, byteLength);
   jsi::ArrayBuffer arrayBuffer(rt, std::move(dataBuffer));
   
   
@@ -402,14 +361,11 @@ static NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object
   shapeArray.setValueAtIndex(rt, 0, 1);
   shapeArray.setValueAtIndex(rt, 1, jsi::Value((double)height));
   shapeArray.setValueAtIndex(rt, 2, jsi::Value((double)width));
-  shapeArray.setValueAtIndex(rt, 3, jsi::Value((double)self.channelCount));
+  shapeArray.setValueAtIndex(rt, 3, jsi::Value((double)channelCount));
 
-  // Add nested meta object
   jsi::Object metaObj(rt);
   metaObj.setProperty(rt, "layout", nsStringToJSI(rt, (config[@"tensorLayout"])));
-  metaObj.setProperty(rt, "dtype", nsStringToJSI(rt, (config[@"outDType"])));
-  metaObj.setProperty(rt, "channelOrder", nsStringToJSI(rt, (config[@"colorFormat"])));
-  
+  metaObj.setProperty(rt, "dType", nsStringToJSI(rt, outDType));
   
   jsi::Object result(rt);
   result.setProperty(rt, "shape", shapeArray);
