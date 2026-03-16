@@ -9,7 +9,11 @@ import androidx.exifinterface.media.ExifInterface
 import java.io.InputStream
 import java.nio.ByteBuffer
 
-import com.imageprocessing.model.*
+import com.imageprocessing.config.ColorFormat
+import com.imageprocessing.config.Normalization
+import com.imageprocessing.config.AlphaHandling
+
+import com.imageprocessing.model.RGBValues
 
 fun getExifOrientation(imageStream: InputStream): Int {
   val exif = ExifInterface(imageStream)
@@ -122,7 +126,7 @@ fun resizeAspectFill(
 }
 
 fun rgbOrderAsPerColorFormat(
-  colorFormat: String,
+  colorFormat: ColorFormat,
   rgb: RGBValues
 ): FloatArray {
   val r = rgb.r
@@ -130,25 +134,20 @@ fun rgbOrderAsPerColorFormat(
   val b = rgb.b
 
   return when (colorFormat) {
-    "RGB" -> floatArrayOf(
+    ColorFormat.RGB -> floatArrayOf(
       r,
       g,
       b
     )
-    "BGR" -> floatArrayOf(
+    ColorFormat.BGR -> floatArrayOf(
       b,
       g,
       r
     )
-    "Grayscale" -> {
+    ColorFormat.GRAYSCALE -> {
       val gray = (0.299f * r) + (0.587f * g) + (0.114f * b)
       floatArrayOf(gray)
     }
-    else -> floatArrayOf(
-      r,
-      g,
-      b
-    )
   }
 }
 
@@ -158,8 +157,8 @@ fun normalizePixel(
   g: Int,
   b: Int,
   a: Int,
-  normalization: String?,
-  alphaHandling: String?,
+  normalization: Normalization,
+  alphaHandling: AlphaHandling,
   mean: FloatArray?,
   std: FloatArray?
 ): RGBValues {
@@ -169,7 +168,7 @@ fun normalizePixel(
   var bf = b.toFloat()
 
   // ---------- Alpha Handling ----------
-  if (alphaHandling == "premultiply") {
+  if (alphaHandling == AlphaHandling.PREMULTIPLY) {
     val af = a / 255f
     rf *= af
     gf *= af
@@ -178,25 +177,27 @@ fun normalizePixel(
 
   // ---------- Normalization ----------
   when (normalization) {
-    "zeroToOne" -> {
+    Normalization.ZERO_TO_ONE -> {
       rf /= 255f
       gf /= 255f
       bf /= 255f
     }
 
-    "minusOneToOne" -> {
+    Normalization.MINUS_ONE_TO_ONE -> {
       rf = (rf / 127.5f) - 1f
       gf = (gf / 127.5f) - 1f
       bf = (bf / 127.5f) - 1f
     }
 
-    "meanStd" -> {
+   Normalization.MEAN_STD -> {
       if (mean != null && std != null) {
         rf = ((rf / 255f) - mean[0]) / std[0]
         gf = ((gf / 255f) - mean[1]) / std[1]
         bf = ((bf / 255f) - mean[2]) / std[2]
       }
     }
+
+    else -> {}
   }
 
   return RGBValues(rf, gf, bf)
