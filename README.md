@@ -64,16 +64,15 @@ import { getTensorObj } from 'react-native-image-processing';
 const result = getTensorObj(filePath, {
   inputDimensions: { width: 224, height: 224 },
   // optional:
-  // colorFormat: 'RGB' | 'RGBA' | 'BGR' | 'Grayscale'
+  // colorFormat: 'RGB' | 'BGR' | 'Grayscale'
   // normalization: 'zeroToOne' | 'none' | 'minusOneToOne' | 'meanStd'
   // mean: { r: number; g: number; b: number }
   // std: { r: number; g: number; b: number }
   // outDType: 'float32' | 'uint8' | 'int8'
-  // channelOrder: 'interleaved' | 'planar'
-  // resizeStrategy: 'centerCrop' | 'stretch' | 'aspectFit' | 'aspectFill'
+  // resizeStrategy: 'aspectFill' | 'stretch' | 'aspectFit'
   // tensorLayout: 'NHWC' | 'NCHW'
   // orientationHandling: 'respectExif' | 'ignoreExif'
-  // alphaHandling: 'dropAlpha' | 'premultiply' | 'keep'
+  // alphaHandling: 'dropAlpha' | 'premultiply'
 });
 
 const { tensor, shape, meta } = result;

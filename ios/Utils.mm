@@ -6,27 +6,44 @@
 //
 
 #import "Utils.h"
+#import "Config.h"
 
 #import <CoreGraphics/CoreGraphics.h>
+#import <jsi/jsi.h>
 
+using namespace facebook;
+
+NSString *JSIStringToNSString(jsi::Runtime &rt, const jsi::String &str) {
+  return [NSString stringWithUTF8String:str.utf8(rt).c_str()];
+}
+
+jsi::String nsStringToJSI(jsi::Runtime &rt, NSString *str) {
+  return jsi::String::createFromUtf8(rt, str.UTF8String);
+}
+
+NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object &obj) {
+  NSNumber *r = @(obj.getProperty(rt, "r").asNumber());
+  NSNumber *g = @(obj.getProperty(rt, "g").asNumber());
+  NSNumber *b = @(obj.getProperty(rt, "b").asNumber());
+  return @[r, g, b];
+}
 
 CGRect ComputeDrawRect(size_t srcWidth,
                        size_t srcHeight,
                        size_t targetWidth,
                        size_t targetHeight,
-                       NSString *strategy)
+                       ResizeStrategy strategy)
 {
     CGFloat widthRatio  = (CGFloat)targetWidth / srcWidth;
     CGFloat heightRatio = (CGFloat)targetHeight / srcHeight;
 
     // stretch
-    if ([strategy isEqualToString:@"stretch"]) {
+    if (strategy == ResizeStrategyStretch) {
         return CGRectMake(0, 0, targetWidth, targetHeight);
     }
 
     // aspectFit
-    if ([strategy isEqualToString:@"aspectFit"]) {
-
+    if (strategy == ResizeStrategyAspectFit) {
         CGFloat scale = MIN(widthRatio, heightRatio);
 
         CGFloat drawWidth  = srcWidth * scale;
@@ -40,7 +57,7 @@ CGRect ComputeDrawRect(size_t srcWidth,
         );
     }
 
-    // aspectFill (also replaces centerCrop)
+    // aspectFill/centerCrop
     CGFloat scale = MAX(widthRatio, heightRatio);
 
     CGFloat drawWidth  = srcWidth * scale;
@@ -61,11 +78,11 @@ std::array<size_t, 3> GetOutIndicesAsPerTensorLayout(
     size_t width,
     size_t height,
     size_t channelCount,
-    NSString *layout
+    TensorLayout layout
 ) {
     std::array<size_t, 3> indices;
 
-    BOOL isNCHW = [layout isEqualToString:@"NCHW"];
+    BOOL isNCHW = layout == TensorLayoutNCHW;
 
     if (isNCHW) {
 
@@ -91,10 +108,10 @@ std::array<size_t, 3> GetOutIndicesAsPerTensorLayout(
 
 RGBValues NormalizePixel(
     const uint8_t *pixel,
-    NSString *normalization,
-    NSString *alphaHandling,
-    const NSArray *mean,
-    const NSArray *std
+    Normalization normalization,
+    AlphaHandling alphaHandling,
+    const float *mean,
+    const float *std
 ) {
     float rf = (float)pixel[0];
     float gf = (float)pixel[1];
@@ -103,7 +120,7 @@ RGBValues NormalizePixel(
     uint8_t a = pixel[3];
   
     // ---------- Alpha Handling ----------
-    if ([alphaHandling isEqualToString:@"premultiply"]) {
+    if (alphaHandling == AlphaHandlingPremultiply) {
         float af = a / 255.0f;
 
         rf *= af;
@@ -111,31 +128,18 @@ RGBValues NormalizePixel(
         bf *= af;
     }
 
-    if ([normalization isEqualToString:@"zeroToOne"]) {
-
+    if (normalization == NormalizationZeroToOne) {
         rf /= 255.0f;
         gf /= 255.0f;
         bf /= 255.0f;
-
-    } else if ([normalization isEqualToString:@"minusOneToOne"]) {
-
+    } else if (normalization == NormalizationMinusOneToOne) {
         rf = (rf / 127.5f) - 1.0f;
         gf = (gf / 127.5f) - 1.0f;
         bf = (bf / 127.5f) - 1.0f;
-
-    } else if ([normalization isEqualToString:@"meanStd"]) {
-
-        float meanR = [mean[0] floatValue];
-        float meanG = [mean[1] floatValue];
-        float meanB = [mean[2] floatValue];
-
-        float stdR = [std[0] floatValue];
-        float stdG = [std[1] floatValue];
-        float stdB = [std[2] floatValue];
-
-        rf = ((rf / 255.0f) - meanR) / stdR;
-        gf = ((gf / 255.0f) - meanG) / stdG;
-        bf = ((bf / 255.0f) - meanB) / stdB;
+    } else if (normalization == NormalizationMeanStd && mean && std) {
+        rf = ((rf / 255.0f) - mean[0]) / std[0];
+        gf = ((gf / 255.0f) - mean[1]) / std[1];
+        bf = ((bf / 255.0f) - mean[2]) / std[2];
     }
 
     return {rf, gf, bf};
@@ -143,15 +147,15 @@ RGBValues NormalizePixel(
 
 
 std::array<float, 3> rgbOrderAsPerColorFormat(
-    NSString *colorFormat,
+    ColorFormat colorFormat,
     RGBValues rgb
 )
 {
   std::array<float, 3> rgbOrder;
   
-  BOOL isRGB  = [colorFormat isEqualToString:@"RGB"];
-  BOOL isBGR  = [colorFormat isEqualToString:@"BGR"];
-  BOOL isGRAY = [colorFormat isEqualToString:@"Grayscale"];
+  BOOL isRGB  = colorFormat == ColorFormatRGB;
+  BOOL isBGR  = colorFormat == ColorFormatBGR;
+  BOOL isGRAY = colorFormat == ColorFormatGrayscale;
   
   float r = rgb.r;
   float g = rgb.g;
@@ -177,21 +181,21 @@ std::array<float, 3> rgbOrderAsPerColorFormat(
 
 
 void UpdateOutputBufferWithRGB(
-   NSString *outDType,
+   OutDType outDType,
    void *buffer,
    const size_t *pixelIndices,
    const float *rgbValues,
    int channelCount
 )
 {
-  if ([outDType isEqualToString:@"float32"]) {
+  if (outDType == OutDTypeFloat32) {
     float *buf = (float *)buffer;
     
     for (int c = 0; c < channelCount; c++) {
       buf[pixelIndices[c]] = (float)rgbValues[c];
     }
   }
-  else if ([outDType isEqualToString:@"uint8"]) {
+  else if (outDType == OutDTypeUint8) {
     uint8_t *buf = (uint8_t *)buffer;
     
     for (int c = 0; c < channelCount; c++) {
@@ -202,12 +206,12 @@ void UpdateOutputBufferWithRGB(
 
 
 void ApplyExifOrientation(
-    NSString *orientationHandling,
+    OrientationHandling orientationHandling,
     CGContextRef context,
     UIImageOrientation orientation,
     CGSize targetSize
 ) {
-  if ([orientationHandling isEqualToString:@"respectExif"]) {
+  if (orientationHandling == OrientationHandlingRespectExif) {
     CGAffineTransform transform = CGAffineTransformIdentity;
 
     switch (orientation) {
@@ -237,46 +241,12 @@ void ApplyExifOrientation(
   }
 }
 
-
-BitmapContextConfig GetBitmapContextConfig(
-    NSString *colorFormat,
-    NSString *alphaHandling
-) {
-  BitmapContextConfig config;
-
-  BOOL wantsAlpha = [alphaHandling isEqualToString:@"premultiply"];
-  BOOL isGrayScaleFormat = [colorFormat isEqualToString:@"Grayscale"];
-
-  if (isGrayScaleFormat) {
-      if (wantsAlpha) {
-          NSLog(@"Invalid config: grayscale cannot use premultiplied alpha");
-      }
-
-      config.colorSpace = CGColorSpaceCreateDeviceGray();
-      config.bytesPerPixel = 1;
-      config.bitmapInfo = kCGImageAlphaNone;
-
-  } else {
-      config.colorSpace = CGColorSpaceCreateDeviceRGB();
-      config.bytesPerPixel = 4;
-
-      if (wantsAlpha) {
-          config.bitmapInfo = kCGImageAlphaPremultipliedLast;
-      } else {
-          config.bitmapInfo = kCGImageAlphaNoneSkipLast;
-      }
-  }
-
-  return config;
-}
-
-
 size_t GetElementSize(
-   NSString *outDType
+   OutDType outDType
 ) {
   size_t elementSize;
 
- if ([outDType isEqualToString:@"uint8"]) {
+ if (outDType == OutDTypeUint8) {
    elementSize = sizeof(uint8_t);
  } else {
    elementSize = sizeof(float);

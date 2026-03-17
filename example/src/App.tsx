@@ -25,6 +25,8 @@ export default function App() {
         width: 224,
         height: 224,
       },
+      // colorFormat: 'Grayscale',
+      // outDType: 'uint8',
     });
 
     const { tensor } = tensorObj;

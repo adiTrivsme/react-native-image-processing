@@ -7,7 +7,11 @@
 
 #import <CoreGraphics/CoreGraphics.h>
 #import <array>
+#import <jsi/jsi.h>
 
+#import "Config.h"
+
+using namespace facebook;
 
 typedef struct {
     float r;
@@ -15,18 +19,18 @@ typedef struct {
     float b;
 } RGBValues;
 
-typedef struct {
-    CGColorSpaceRef colorSpace;
-    CGBitmapInfo bitmapInfo;
-    size_t bytesPerPixel;
-} BitmapContextConfig;
 
+NSString *JSIStringToNSString(jsi::Runtime &rt, const jsi::String &str);
+
+jsi::String nsStringToJSI(jsi::Runtime &rt, NSString *str);
+
+NSArray *convertRGBJSIObjectToNSArray(jsi::Runtime &rt, const jsi::Object &obj);
 
 CGRect ComputeDrawRect(size_t srcWidth,
                        size_t srcHeight,
                        size_t targetWidth,
                        size_t targetHeight,
-                       NSString *strategy);
+                       ResizeStrategy strategy);
 
 
 std::array<size_t, 3> GetOutIndicesAsPerTensorLayout(
@@ -35,41 +39,34 @@ std::array<size_t, 3> GetOutIndicesAsPerTensorLayout(
     size_t width,
     size_t height,
     size_t channelCount,
-    NSString *layout
+    TensorLayout layout
 );
 
 
 RGBValues NormalizePixel(
     const uint8_t *pixel,
-    NSString *normalization,
-    NSString *alphaHandling,
-    const NSArray *mean,
-    const NSArray *std
+    Normalization normalization,
+    AlphaHandling alphaHandling,
+    const float *mean,
+    const float *std
 );
 
 
 std::array<float, 3> rgbOrderAsPerColorFormat(
-    NSString *colorFormat,
+    ColorFormat colorFormat,
     RGBValues rgb
 );
 
 
 void ApplyExifOrientation(
-    NSString *orientationHandling,
+    OrientationHandling orientationHandling,
     CGContextRef context,
     UIImageOrientation orientation,
     CGSize targetSize
 );
 
-
-BitmapContextConfig GetBitmapContextConfig(
-    NSString *colorFormat,
-    NSString *alphaHandling
-);
-
-
 void UpdateOutputBufferWithRGB(
-   NSString *outDType,
+   OutDType outDType,
    void *buffer,
    const size_t *pixelIndices,
    const float *rgbValues,
@@ -78,5 +75,5 @@ void UpdateOutputBufferWithRGB(
 
 
 size_t GetElementSize(
-   NSString *outDType
+  OutDType outDType
 );
