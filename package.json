@@ -1,6 +1,6 @@
 {
   "name": "react-native-image-processing",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Native image-to-tensor preprocessing for React Native ML pipelines",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
