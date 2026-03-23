@@ -10,6 +10,8 @@
 #import <UIKit/UIKit.h>
 #import <React/RCTUtils.h>
 
+#import <ReactCommon/CallInvoker.h>
+
 #import "BitmapUtils.h"
 #import "Utils.h"
 
@@ -18,15 +20,14 @@ using namespace facebook;
 
 @implementation ImageProcessing
 
+RCT_EXPORT_MODULE()
+
+@synthesize bridge = _bridge;
+
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
     (const facebook::react::ObjCTurboModule::InitParams &)params
 {
     return std::make_shared<facebook::react::NativeImageProcessingSpecJSI>(params);
-}
-
-+ (NSString *)moduleName
-{
-  return @"ImageProcessing";
 }
 
 - (instancetype)init {
@@ -80,7 +81,6 @@ using namespace facebook;
   auto dataBuffer = std::make_shared<RawBuffer>(outputBuffer, byteLength);
   jsi::ArrayBuffer arrayBuffer(rt, std::move(dataBuffer));
   
-  
   jsi::Array shapeArray(rt, 4);
   shapeArray.setValueAtIndex(rt, 0, 1);
   shapeArray.setValueAtIndex(rt, 1, jsi::Value((double)height));
@@ -102,13 +102,12 @@ using namespace facebook;
 
 RCT_EXPORT_SYNCHRONOUS_TYPED_METHOD(NSNumber *, install)
 {
-  RCTBridge *bridge = [RCTBridge currentBridge];
-  RCTCxxBridge* cxxBridge = (RCTCxxBridge *) bridge;
+  RCTCxxBridge* cxxBridge = (RCTCxxBridge *) _bridge.batchedBridge;
   
   if (cxxBridge == nil) return @NO;
   
   jsi::Runtime *jsiRuntime = (jsi::Runtime *) cxxBridge.runtime;
-  
+
   if (jsiRuntime == nil) return @NO;
   
   imageProcessingModule::install(*jsiRuntime);
@@ -118,8 +117,7 @@ RCT_EXPORT_SYNCHRONOUS_TYPED_METHOD(NSNumber *, install)
 
 RCT_EXPORT_SYNCHRONOUS_TYPED_METHOD(NSNumber *, uninstall)
 {
-  RCTBridge *bridge = [RCTBridge currentBridge];
-  RCTCxxBridge* cxxBridge = (RCTCxxBridge *) bridge;
+  RCTCxxBridge* cxxBridge = (RCTCxxBridge *) _bridge.batchedBridge;
   
   if (cxxBridge == nil) return @NO;
   
